@@ -1,0 +1,280 @@
+---
+title: "Session3"
+output: html_document
+date: "2026-09-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+TODAY: Bar Plots, Scatter Plots, *[Break]*, Tables, Coefficient Plots
+
+### Bar Plots
+
+Based off (R for Data Science)[https://r4ds.hadley.nz/data-visualize]
+```{r}
+install.packages("tidyverse")
+library(tidyverse)
+install.packages("ggplot2")
+library(ggplot2)
+install.packages("ggthemes")
+library(ggthemes)
+```
+```{r}
+# Load the data saved in Session 1 -- or, if the file can't be found (wrong working
+# directory? Session 1 not finished?), rebuild the same data frame from the built-in Seatbelts data.
+if (file.exists("../data/seatbelts_monthly.csv")) {
+  seatbelts_monthly <- read.csv("../data/seatbelts_monthly.csv")
+  seatbelts_monthly$date <- as.Date(seatbelts_monthly$date)
+} else {
+  seatbelts_monthly <- as.data.frame(Seatbelts)
+  seatbelts_monthly$date <- seq(as.Date("1969-01-01"), by = "month", length.out = nrow(seatbelts_monthly))
+  seatbelts_monthly$month <- months(seatbelts_monthly$date)
+}
+seatbelts_monthly$month <- factor(seatbelts_monthly$month, levels = month.name)
+str(seatbelts_monthly)
+
+# Create a basic bar plot -- this is the same seasonality pattern we found with tapply()
+# in Session 2, now as a picture
+ggplot(seatbelts_monthly, aes(x = month, y = DriversKilled)) +
+  geom_bar(stat = "identity") +
+  # stat =  "identity": This is used when the data already contains the values you want to plot, and you do not want ggplot2 to perform any additional computation. The height of each bar is directly taken from the values provided in the data. Alternatively, the default is "count" (default): this is used to create bar plots where the height of each bar represents the count of cases in each category. In this case, ggplot2 calculates the counts automatically from the data.
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Basic Bar Plot", x = "Month", y = "Drivers Killed")
+```
+```{r}
+# Create a grouped bar plot
+# LawPeriod is a derived category (before/after the seatbelt law) -- it gives us a second
+# grouping variable to fill by, the same way "IncomeGroup" worked alongside "Region" for states
+seatbelts_monthly$LawPeriod <- ifelse(seatbelts_monthly$law == 1, "Post-law", "Pre-law")
+
+ggplot(seatbelts_monthly, aes(x = month, y = DriversKilled, fill = LawPeriod)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  # position = "dodge": Places bars for different groups side by side, rather than stacking them. This is useful for comparing the values of different groups within each category. Alternatively, one can use position = "stack" (default for geom_bar()): Stacks the bars on top of each other. This is typically used for visualizing the cumulative value of different groups in each category.
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Grouped Bar Plot", x = "Month", y = "Drivers Killed")
+```
+
+```{r}
+# Eliminate NAs
+# seatbelts_monthly itself has no missing data, so for teaching purposes we'll pretend
+# a few months' LawPeriod label didn't get recorded
+set.seed(1)
+seatbelts_monthly$LawPeriod[sample(seq_len(nrow(seatbelts_monthly)), 4)] <- NA
+
+clean_seatbelts <- seatbelts_monthly[!is.na(seatbelts_monthly$LawPeriod), ]
+
+ggplot(clean_seatbelts, aes(x = month, y = DriversKilled, fill = LawPeriod)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Grouped Bar Plot", x = "Month", y = "Drivers Killed")
+```
+
+## Scatter Plots
+
+We'll get introduced to scatter plots by recreating this graph:
+```{r}
+# Season is a second derived category -- the same confound we uncovered in Session 2's
+# regression task (kms vs DriversKilled has a *negative* raw relationship because both
+# are driven by season) should be visible here too
+seatbelts_monthly$Season <- ifelse(seatbelts_monthly$month %in% c("December", "January", "February"), "Winter",
+                             ifelse(seatbelts_monthly$month %in% c("March", "April", "May"), "Spring",
+                             ifelse(seatbelts_monthly$month %in% c("June", "July", "August"), "Summer", "Autumn")))
+seatbelts_monthly$Season <- factor(seatbelts_monthly$Season, levels = c("Winter", "Spring", "Summer", "Autumn"))
+
+ggplot(
+  data = seatbelts_monthly,
+  mapping = aes(x = kms, y = DriversKilled)
+) +
+  geom_point(aes(color = Season, shape = Season)) +
+  geom_smooth(method = "lm") +
+  labs(
+    title = "Drivers killed and distance driven",
+    subtitle = "Great Britain, monthly, 1969-1984",
+    x = "Distance driven (km)", y = "Drivers Killed",
+    color = "Season", shape = "Season"
+  ) +
+  scale_color_colorblind()
+# notice the overall trend line slopes DOWN -- more driving, fewer deaths?! Look at how
+# the colors cluster: high-kms points skew toward Spring/Summer (fewer deaths), low-kms
+# points skew toward Winter (more deaths). The trend line is picking up season, not a
+# genuine "more driving is safer" effect. We resolved exactly this in Session 2 by
+# controlling for month in a regression.
+```
+
+Building it up step by step *(syntax demo -- same plot as above, one ggplot layer at a time)*:
+
+```{r}
+# blank canvas
+ggplot(data = seatbelts_monthly)
+
+# adding the aesthetic mappings - the x and y axis
+ggplot(
+  data = seatbelts_monthly,
+  mapping = aes(x = kms, y = DriversKilled)
+)
+
+# adding the months
+ggplot(
+  data = seatbelts_monthly,
+  mapping = aes(x = kms, y = DriversKilled)
+) +
+  geom_point()
+
+# making it pretty
+ggplot(
+  data = seatbelts_monthly,
+  mapping = aes(x = kms, y = DriversKilled, color = Season)
+) +
+  geom_point()
+
+# adding the linear model
+ggplot(
+  data = seatbelts_monthly,
+  mapping = aes(x = kms, y = DriversKilled, color = Season)
+) +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+# moving the color = Season to the geom_point()
+ggplot(
+  data = seatbelts_monthly,
+  mapping = aes(x = kms, y = DriversKilled)
+) +
+  geom_point(mapping = aes(color = Season)) +
+  geom_smooth(method = "lm")
+
+# changing the dots to triangles, squares, and circles
+ggplot(
+  data = seatbelts_monthly,
+  mapping = aes(x = kms, y = DriversKilled)
+) +
+  geom_point(mapping = aes(color = Season, shape = Season)) +
+  geom_smooth(method = "lm")
+
+# adding the labels and changing the colour palette
+ggplot(
+  data = seatbelts_monthly,
+  mapping = aes(x = kms, y = DriversKilled)
+) +
+  geom_point(aes(color = Season, shape = Season)) +
+  geom_smooth(method = "lm") +
+  labs(
+    title = "Drivers killed and distance driven",
+    subtitle = "Great Britain, monthly, 1969-1984",
+    x = "Distance driven (km)", y = "Drivers Killed",
+    color = "Season", shape = "Season"
+  ) +
+  scale_color_colorblind()
+```
+
+
+## Regressions & regression tables
+
+We will now use a new data set. `simulated_trust_data` is **entirely simulated** — generated by the code below, not collected from real respondents — built to look like a pilot survey experiment testing the effects of exposure to polarized online discussions (`treatmentgroup`) on **generalized trust** (`gentrust`), alongside two covariates: `pol_id` (a baseline measure of political identification) and `polarisation` (a measure of **affective polarization**). This part of the session isn't about Seatbelts — it's a different kind of dataset (an experiment, not observational time series) that needs its own example.
+```{r}
+library(stargazer) # this package makes publishable tables
+
+# SIMULATED DATA -- for teaching purposes only. Not real experimental data.
+#
+# What each variable is meant to operationalize:
+#  - gentrust: GENERALIZED TRUST. The classic social-capital survey item (GSS/World
+#    Values Survey): "Generally speaking, would you say that most people can be
+#    trusted, or that you can't be too careful in dealing with people?" -- here on a
+#    continuous 0-10 scale (0 = you can't be too careful, 10 = most people can be trusted).
+#  - pol_id: political identification / ideological self-placement, a 7-point scale
+#    (e.g. 1 = strongly left-leaning, 7 = strongly right-leaning). Simulated here as
+#    continuous within [1,7] for simplicity -- a real survey item like this is usually
+#    answered as a whole number, not a decimal.
+#  - polarisation: AFFECTIVE polarization, NOT perceived/societal polarization. This is
+#    about the respondent's own feelings -- warmth toward their political in-group and
+#    hostility toward the out-group (the standard construct in political psychology,
+#    e.g. Iyengar et al.'s feeling-thermometer-difference measure) -- not a belief about
+#    how divided society is in general. Here it's a standardized 0-10 index (higher =
+#    more affectively polarized: stronger in-group loyalty / out-group hostility).
+set.seed(42)
+n <- 300
+treatmentgroup <- rbinom(n, 1, 0.5)
+pol_id <- pmin(pmax(rnorm(n, mean = 4, sd = 1.5), 1), 7)
+polarisation <- pmin(pmax(5 + 1.5 * treatmentgroup + 0.1 * pol_id + rnorm(n, 0, 1.5), 0), 10) # clipped to match its 0-10 scale (gentrust and pol_id are bounded the same way)
+gentrust <- pmin(pmax(7 - 1.0 * treatmentgroup - 0.3 * polarisation + 0.15 * pol_id + rnorm(n, 0, 1.2), 0), 10)
+simulated_trust_data <- data.frame(treatmentgroup, pol_id, polarisation, gentrust)
+
+#let's familiarize with the dataset. What steps would you do?
+```
+
+```{r main}
+#Models
+reg <- lm(gentrust ~ treatmentgroup, data = simulated_trust_data)
+polid_mod <- lm(gentrust ~ treatmentgroup + pol_id , data = simulated_trust_data)
+perpol_mod <- lm(gentrust ~ treatmentgroup + polarisation, data = simulated_trust_data)
+fullmod <- lm(gentrust ~ treatmentgroup + polarisation + pol_id, data = simulated_trust_data)
+polonly <- lm(gentrust ~ polarisation, data = simulated_trust_data)
+polidonly <- lm(gentrust ~ pol_id, data = simulated_trust_data)
+```
+
+```{r, results = 'asis'}
+stargazer(reg, polonly, polidonly, polid_mod, perpol_mod, fullmod, title = "Results", header = FALSE, type = "text", align = TRUE, omit.stat = c("f", "ser"))
+```
+
+To produce a nice table when we knit this markdown file we change the argument "type"
+```{r, results = 'asis'}
+stargazer(reg, polonly, polidonly, polid_mod, perpol_mod, fullmod, title = "Results", header = FALSE, type = "html", align = TRUE, omit.stat = c("f", "ser"))
+```
+
+In theory, this is Latex. If you paste this into Overleaf this should turn it into a table.
+```{r}
+stargazer(reg, polonly, polidonly, polid_mod, perpol_mod, fullmod, title = "Results", header = FALSE, type = "latex", align = TRUE, omit.stat = c("f", "ser"))
+```
+
+### Task: reading the model comparison
+
+Look at the `stargazer` table above — six columns, six specifications of the same outcome (`gentrust`). Work through this in two stages.
+
+**Stage 1 — read the table on its own terms.**
+
+1. **Track the `treatmentgroup` coefficient** across `reg`, `polid_mod`, `perpol_mod`, and `fullmod`. Does it stay roughly the same size, or does it change meaningfully when a covariate is added? Which covariate's addition moves it, if any?
+   *(A tip, not something to answer yet: keep an eye on the standard error too as you do this. As a rule of thumb, a shrinking SE usually means the added variable explains outcome variance without overlapping much with your treatment — a precision gain. A growing SE can mean the added variable is substantially correlated with the treatment itself. Worth remembering, not something to diagnose here.)*
+2. **Track R²** across the four models. Which one "fits" best by that measure?
+3. Based on 1-2 alone — if someone handed you just this table, with no other context — which model would you report as your headline result, and why?
+
+**Stage 2 — the twist.**
+
+4. Here's something the table alone can't tell you: `pol_id` was measured *before* participants were assigned to `treatmentgroup` (a baseline political-identity measure). `polarisation` — affective polarization, the respondent's own in-group warmth / out-group hostility — was plausibly measured *after* exposure to the treatment. If that's right, `polarisation` may be a **post-treatment mediator**: caused by the treatment, and itself a cause of `gentrust`, rather than a safe baseline covariate like `pol_id`.
+5. Does that change your answer to (3)? A model can look statistically excellent — high R², a clean sign, a "significant" coefficient — and still be the wrong one to trust, if including a variable risks absorbing part of the very effect you're trying to measure (more formally: violating the ignorability assumption needed to interpret the remaining coefficient causally). Which model would you report now, and why?
+6. This should feel familiar: it's the same shape of problem as `kms` and `month` in Session 2's regression task, just with a different mechanism (a mediator here, a confounder there). Both are cases where "which variables to control for" is a design question — something the table's fit statistics can't settle on their own.
+
+### Coefficient plots
+
+Coefficient plots, are currently one of the preferred ways to present an experiment's results. Hold on tight, the following code will give us the chance to point out a few more fun stuff
+```{r}
+# Install and load required packages
+install.packages("ggplot2")
+install.packages("broom")
+library(ggplot2)
+library(broom)
+
+# We refer to the "fullmod" we run earlier
+# Tidy the model output
+tidy_model <- tidy(fullmod)
+# let's give a look at the output of the tidy model and to the info stored here
+print(tidy_model)
+
+# Filter out the intercept (base R indexing, instead of dplyr::filter())
+tidy_model_no_intercept <- tidy_model[tidy_model$term != "(Intercept)", ]
+
+# Create the coefficient plot with a bold zero line and without intercept
+ggplot(tidy_model_no_intercept, aes(x = term, y = estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = estimate - 1.96 * std.error, ymax = estimate + 1.96 * std.error), width = 0.2) + #what did we do here? upper/lower bound of the 95% confidence interval (estimate ± 1.96 * standard error -- NOT ± 1 SE, which would only be a ~68% interval)
+  geom_hline(yintercept = 0, linetype = "solid", color = "red", size = 1) +  # Add bold zero line
+  theme_minimal() +
+  labs(title = "Coefficient Plot", x = "Predictors", y = "Estimates") +
+  coord_flip() # generally, we like to have the x-axix on teh right in coef plots
+```
+
+In the next session we are going to learn about alternative modeling strategies. See you then!

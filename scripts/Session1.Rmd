@@ -1,0 +1,284 @@
+---
+title: "Session1"
+output: html_document
+date: "2026-09-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Welcome
+
+This bootcamp is built around one real, historical dataset: monthly Great Britain road-safety statistics from 1969 to 1984, including whether the front-seatbelt law was in force. In the real world, this dataset is a natural starting point for studying the impact of Great Britain's January 1983 seatbelt law — a classic natural-experiment case in policy evaluation.
+
+Over the next four sessions we're going to unpack this dataset piece by piece: starting with the basics of R, moving through descriptive statistics and hypothesis testing, into visualization, and finally into a range of modeling strategies. Along the way we'll use it as an opportunity to explore *different approaches* to analysis — without trying to land on the single best design for evaluating this specific policy. That's a genuinely hard question in its own right (we'll flag where the tricky parts are, rather than solve them), and getting it fully right isn't this bootcamp's job.
+
+Compared to previous editions, this one spends a bit more time on *design* — what question are we actually asking, and what's the right way to test it — and a bit less on pure coding syntax. With AI increasingly able to write R code for you, the more durable skill is knowing what logic you want that code to implement, and why.
+
+TODAY: Create a Project, RStudio Interface, Help, Arithmetic, Variable types & assignment, Sequences & matrices, *[Break]* Installing packages, Working directories, Importing data, Saving data, Some useful functions
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document.
+
+If your code takes too long to knit, you can set the chunk option cache = TRUE, but be careful if the chunks create datasets that you need further down the line. We should also "block" with the "#" sign all packages from being installed and loaded in the library
+
+Note also that, sometimes different packages have functions of the same name. Select a function from a specific package like this: `base::unique()`
+
+R is *case-sensitive*. This means that inflation is different from Inflation. You can include . or _ or numbers in an object name. But you cannot start an object name with a number. Hence inflation2023, inflation.2023, inflation_2023 are all fine, but 2023inflation will not work.
+
+### Arithmetic *(syntax demo)*
+```{r}
+# FYI you can use # to write comments in code chunks (and in R scripts)
+4 + 3
+4 - 3
+4 / 3
+4 * 3
+```
+
+Using R as a calculator is not terribly useful. The real advantage of R lies in the fact that we can create objects and we can assign values to these objects
+
+### Variable types & assignment *(syntax demo)*
+```{r}
+a_variable <- 1983 # in R, "<-" is the assignment operator that allow us to create r objects -- this happens to be the year the Great Britain seatbelt law came into force
+# you can see that now the object "a_variable" has been saved in our global environment
+class(a_variable)
+is.numeric(a_variable)
+is.character(a_variable)
+# as.numeric() # convert variables - also as.factor(), as.character()
+# in general R works with 4 types of data: numeric, character, logical, and factor types.
+# some extra care when converting factors to numeric
+
+a_sequence <- c(1,2,3) #c is for concatenate - creates vectors
+class(a_sequence)
+sum(a_sequence)
+2*a_sequence
+length(a_sequence) # length of the variable
+
+
+abc <- c("a", "b", "c")
+# Note that a vector can only hold elements of the same type. For example, you cannot have a vector that contains both characters and numeric values.
+class(abc)
+print(abc)
+
+```
+
+### Sequences & matrices *(syntax demo)*
+```{r}
+another_sequence <- seq(from = 0.5, to = 1.5, by = 0.5)
+print(another_sequence)
+
+third_sequence <- 1:3
+print(third_sequence)
+
+rep1 <- rep(1, times = 5)
+print(rep1)
+
+rep2 <- rep(c(1, 2, 3), times = 3)
+print(rep2)
+
+rep3 <- rep(c(1, 2, 3), each = 3)
+print(rep3)
+
+# Let's have an insight on how r thinks
+matrix <- cbind(a_sequence, abc)
+print(matrix)
+print(matrix[2,2])
+# How to I get "3"? and how do I get "a"?
+
+matrix2 <- rbind(a_sequence, abc)
+print(matrix2)
+print(matrix2[2, 3])
+# How do I get "a" now?
+# If I get confused between rows and columns and I ask to R "print(matrix2[3,2])",
+# I get an error message: Error in matrix2[3, 2] : subscript out of bounds
+
+# There are other variable types e.g. matrices, factors, data frames, lists
+```
+
+### Task: build your own sequence and matrix
+
+Work through this on your own before we regroup.
+
+1. Create a numeric sequence of length 4, counting *down* (e.g. from 10 to 1).
+2. Create a character vector of length 4 with the names of 4 things you'd want on hand at a road-safety data collection site.
+3. Combine the two into a matrix with `cbind()`.
+4. Extract just the 3rd row of your matrix. Then extract just one specific cell (e.g. row 2, column 2).
+
+```{r, eval=FALSE}
+# your code here
+```
+
+### Installing packages - tidyverse *(syntax demo)*
+```{r}
+install.packages("tidyverse") # you have to put the name of the package in quotation marks for install.packages)
+
+library(tidyverse) # but you don't have to for library()
+```
+
+### Working directories *(syntax demo)*
+```{r eval = FALSE}
+
+getwd() #tells you your current working directory.
+
+#setwd() sets your working directory
+#you can also interact directly with the interface...
+```
+
+### Importing data
+
+`Seatbelts` is real historical data (Great Britain road-safety statistics, 1969-1984) — but it ships built into base R itself, as part of the `datasets` package that's always loaded. No download, no `install.packages()`, no data-licensing question: it's already there.
+
+```{r}
+data(Seatbelts) # built-in, no file needed
+class(Seatbelts) # a multivariate time series -- not a data frame yet
+str(Seatbelts)
+
+# Convert it to a regular data frame, and add a date + month column so we can work with
+# it the way we work with any other dataset
+seatbelts_monthly <- as.data.frame(Seatbelts)
+seatbelts_monthly$date <- seq(as.Date("1969-01-01"), by = "month", length.out = nrow(seatbelts_monthly))
+seatbelts_monthly$month <- factor(months(seatbelts_monthly$date), levels = month.name)
+
+# Some ways of inspecting the dataset
+dim(seatbelts_monthly)
+summary(seatbelts_monthly)
+head(seatbelts_monthly) # give you the top 6 values or rows by default (always scroll down!)
+tail(seatbelts_monthly)
+str(seatbelts_monthly)
+# generally the output of verbose functions (e.g. str) appear in the console, and the output of snappy functions (e.g. head) appears on the markdown
+
+# law: 0 before the seatbelt law took effect (Jan 1983), 1 after
+table(seatbelts_monthly$law)
+
+# What if my data set had a different extension, let's say, it was created in Stata?
+# install.packages("haven")
+library(haven)
+dir.create("../data", showWarnings = FALSE) # make sure the folder we're about to write into exists
+write_dta(seatbelts_monthly, "../data/seatbelts_monthly_demo.dta") # write our own data out as .dta...
+seatbelts_from_stata <- read_dta("../data/seatbelts_monthly_demo.dta") # ...and read it straight back in, just to see the mechanics
+str(seatbelts_from_stata)
+```
+
+### Saving data *(syntax demo)*
+```{r}
+write_csv(seatbelts_monthly, "../data/seatbelts_monthly.csv")
+```
+
+### Subsetting
+```{r}
+## (1) Basic R syntax
+# Select the first 10 observations
+seatbelts_10 <- seatbelts_monthly[1:10, ]
+print(seatbelts_10)
+
+# Select columns
+seatbelts_cols <- seatbelts_monthly[, c("date", "DriversKilled", "law")]
+print(head(seatbelts_cols))
+
+# Using the "subset" function, subset by condition
+seatbelts_postlaw <- subset(seatbelts_monthly, law == 1)
+dim(seatbelts_postlaw) # only 23 months -- the law took effect in Jan 1983, and our data ends Dec 1984
+
+## (2) dplyr syntax
+install.packages("dplyr")
+library(dplyr)
+
+# Select columns
+seatbelts_select <- select(seatbelts_monthly, date, DriversKilled, kms, law)
+
+# Select rows
+seatbelts_1980s <- filter(seatbelts_monthly, date >= as.Date("1980-01-01"))
+
+# Chain operations -- and here's an important design decision, not just a coding one:
+# comparing ALL 169 pre-law months against the 23 post-law months would mostly be
+# comparing two very different eras (cars, roads and driving all got safer over 15
+# years, law or no law) -- not the law's effect. Narrowing the pre-law window keeps
+# the comparison closer to apples-to-apples. We'll use this same window for the rest
+# of the bootcamp whenever we compare before/after the law.
+seatbelts_window <- seatbelts_monthly %>%
+  filter(date >= as.Date("1980-01-01")) %>%
+  select(date, DriversKilled, kms, PetrolPrice, law)
+table(seatbelts_window$law)
+# can you produce a narrower window, say 2 years either side of the law change instead of
+# our 3-years-before choice? how many observations in each group do you get, and does the
+# comparison feel any more or less trustworthy to you?
+```
+
+### Rename variables *(syntax demo)*
+```{r}
+# before renaming variables, I want to introduce you to the "$"
+# in R, we can use $ to specify in which object R should look for something, e.g. in which data frame a certain vector (or variable) is stored
+seatbelts_monthly_original <- seatbelts_monthly # keep an untouched copy so the alternative renaming methods below don't clash with the $ columns
+
+seatbelts_monthly$deaths <- seatbelts_monthly$DriversKilled
+seatbelts_monthly$distance_km <- seatbelts_monthly$kms
+names(seatbelts_monthly) # we can check what really happened using the "names" function
+
+# using function base R, starting again from the untouched original
+seatbelts_base <- seatbelts_monthly_original
+names(seatbelts_base)[names(seatbelts_base) == "DriversKilled"] <- "deaths"
+names(seatbelts_base)[names(seatbelts_base) == "kms"] <- "distance_km"
+
+print(head(seatbelts_base)) #see that in fact PetrolPrice did not change
+
+# Renaming variables with dplyr, also starting again from the untouched original
+# when we stop using basic R syntax and move to dplyr syntax, the pipeline %>% tells R where to look for certain info
+seatbelts_renamed <- seatbelts_monthly_original %>%
+  rename(
+    deaths = DriversKilled,
+    distance_km = kms
+  )
+
+print(head(seatbelts_renamed))
+
+# we can also install the the plyr package and use the "rename" function... Let's try together
+#install.packages("plyr")
+#library(plyr)
+#df_renamed <- rename(df, c("old_name1" = "new_name1", "old_name2" = "new_name2"))
+#print(df_renamed)
+```
+
+### Task: subset, select, rename, clean — independently
+
+Using `seatbelts_monthly` (not `seatbelts_base`, so you're starting from the original data):
+
+1. Create your own subset with a filter condition of your choice (e.g. a specific `month`, a specific `date` range, or `law == 0`/`law == 1`) — either base R (`subset()`) or dplyr (`filter()`).
+2. Select 3 columns of your choice from that subset.
+3. Rename at least one of those columns to something more readable.
+4. Check whether your subset has any missing values (`is.na()` or `any(is.na(...))`).
+
+```{r, eval=FALSE}
+# your code here
+```
+
+### Omit NAs *(syntax demo)*
+```{r}
+# Seatbelts itself has no missing data, so for teaching purposes we'll pretend a handful of
+# months' PetrolPrice reading went missing
+set.seed(1)
+seatbelts_monthly$PetrolPrice[sample(seq_len(nrow(seatbelts_monthly)), 5)] <- NA
+
+is.na(seatbelts_monthly$PetrolPrice)
+seatbelts_clean <- na.omit(seatbelts_monthly)
+#how many observations did we lose?
+dim(seatbelts_monthly) - dim(seatbelts_clean)
+
+```
+
+### Clean environment *(syntax demo)*
+```{r}
+rm(seatbelts_postlaw) # remove specific objects
+rm(list = ls()) # to remove all objects - or just click the little broom
+```
+
+### Supported Learning
+```{r}
+install.packages("swirl")
+library(swirl)
+```
+
+In the next session we are going to learn more basic operations with our data. See you then!

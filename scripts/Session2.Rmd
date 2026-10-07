@@ -1,0 +1,353 @@
+---
+title: "Session2"
+output: html_document
+date: "2026-09-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+TOPICS: Summarizing data, Measures of central tendency, Dplyr, Data manipulation, *[Break]* Covariation, Correlations and T-tests, Simple linear regressions.
+
+### Summarise my data
+```{r}
+# let's load the data-set we built last time. If the file can't be found (wrong working
+# directory? Session 1 not finished?), we rebuild the same data frame from the built-in
+# Seatbelts data instead -- either way you end up with exactly the same thing.
+if (file.exists("../data/seatbelts_monthly.csv")) {
+  seatbelts_monthly <- read.csv("../data/seatbelts_monthly.csv")
+  seatbelts_monthly$date <- as.Date(seatbelts_monthly$date)
+} else {
+  seatbelts_monthly <- as.data.frame(Seatbelts)
+  seatbelts_monthly$date <- seq(as.Date("1969-01-01"), by = "month", length.out = nrow(seatbelts_monthly))
+  seatbelts_monthly$month <- months(seatbelts_monthly$date)
+}
+seatbelts_monthly$month <- factor(seatbelts_monthly$month, levels = month.name)
+
+# let's look at it to remember its structure
+summary(seatbelts_monthly)
+summary(seatbelts_monthly$law) #we can get summary info of individual variables, too
+# remember what "$" stands for in R
+
+# I'll teach you a trick
+attach(seatbelts_monthly)
+unique(month)
+# we can avoid using $ all the time, but do not use the "attach" function when your analysis become more complex and risk confusion (e.g. you use more than one data set)
+
+names(seatbelts_monthly)
+
+# How many observations in each month?
+table(month)
+# What is the count of law==1 (post-law) months in each calendar month?
+table(law, month) # this is called cross-tabulation
+table(DriversKilled, month) # it is a bit more verbose when one of our variables is continuous
+# It might be more useful to see if the mean of DriversKilled changes by month
+tapply(DriversKilled, month, mean)
+# NB: this is a real, useful finding, not just a syntax demo -- deaths are far higher in
+# Nov/Dec/Jan than in spring. Any comparison that mixes different seasonal compositions
+# between two groups risks confusing seasonality with whatever we're actually comparing.
+# We'll come back to exactly this point in the hypothesis-testing section below.
+```
+
+### Measures of central tendency *(syntax demo)*
+```{r}
+# for teaching purposes, let's pretend a handful of months' petrol price wasn't reported.
+# (Seatbelts itself has no missing data, so we make a COPY of the column and punch a few gaps
+# in it -- the real PetrolPrice column stays intact for the models later on.)
+set.seed(2)
+seatbelts_monthly$PetrolPrice_reported <- seatbelts_monthly$PetrolPrice
+seatbelts_monthly$PetrolPrice_reported[sample(seq_len(nrow(seatbelts_monthly)), 6)] <- NA
+
+# Mean: the average of a set of numbers
+mean_deaths <- mean(DriversKilled)
+print(mean_deaths)
+# Print the mean more aesthetically
+print(paste("Mean:", mean_deaths))
+# what is the mean of "PetrolPrice_reported"? (try mean(seatbelts_monthly$PetrolPrice_reported)) Don't worry if you get NA as a result, I'll explain what is going on in a second ;)
+
+# Median: the middle value in a set of numbers.
+median_deaths <- median(DriversKilled)
+print(paste("Median:", median_deaths))
+# What about "PetrolPrice_reported"? got you again, sorry!
+
+# Mode: the most frequently occurring value in a set of numbers.
+# R does not have a built-in function for mode, but you can create a custom function to calculate it.
+
+# Custom function to calculate mode
+calculate_mode <- function(x) {
+  uniq <- unique(x)
+  uniq[which.max(tabulate(match(x, uniq)))]
+}
+
+# Apply my function
+mode_deaths <- calculate_mode(DriversKilled)
+print(paste("Mode:", mode_deaths))
+
+# NB: missing values are a problem for measures of central tendency as they bias the divisor (total number of observations)
+# Calculate the mean with NA removed
+mean_petrol_noNAs <- mean(seatbelts_monthly$PetrolPrice_reported, na.rm = TRUE)
+# Print the result
+print(paste("Mean with NA removed:", mean_petrol_noNAs)) #compare with what you got before...
+```
+
+### Task: measures of central tendency on a new variable
+
+`seatbelts_monthly` also has `VanKilled` — the number of van drivers/passengers killed each month.
+
+1. Compute the mean, median, and mode of `VanKilled`.
+2. Compare the three. Are they close together, or does one stand out?
+3. In one sentence: does `VanKilled` look like a variable a mean summarizes well, or is it the kind of variable (a small count, possibly skewed) where you'd want to look at more than just the mean?
+
+```{r, eval=FALSE}
+# your code here
+```
+
+### More Dplyr *(syntax demo)*
+introduction to dplyr: Recap and deepen understanding of dplyr functions.
+filter(): Advanced filtering techniques.
+arrange(): Sorting data by multiple columns.
+select(): More complex column selection, including renaming columns.
+mutate(): Creating and transforming variables, including handling factors.
+summarize(): Aggregating data with functions like mean(), sd(), and n().
+
+
+
+```{r}
+# Load dplyr
+install.packages("dplyr")
+library(dplyr)
+
+# Advanced filtering: multiple conditions
+filtered_seatbelts <- seatbelts_monthly %>%
+  filter(kms > 10000 & law == 0)
+# Note: the symbols "&" or "|" are important in R
+
+# Sort by DriversKilled in descending order, then by date in ascending order
+arranged_seatbelts <- seatbelts_monthly %>%
+  arrange(desc(DriversKilled), date)
+
+# Select date and DriversKilled columns, and rename DriversKilled to Deaths
+selected_seatbelts <- seatbelts_monthly %>%
+  select(date, Deaths = DriversKilled)
+
+# Add a new column 'AboveMeanDeaths' based on DriversKilled, and bucket DriversKilled into quartiles
+mutated_seatbelts <- seatbelts_monthly %>%
+  mutate(
+    AboveMeanDeaths = ifelse(DriversKilled >= mean(DriversKilled), "Yes", "No"),
+    DeathsQuartile = cut(DriversKilled, breaks = quantile(DriversKilled, probs = seq(0, 1, 0.25)),
+                          include.lowest = TRUE, labels = c("Low", "Medium", "High", "Very High"))
+  )
+
+table(mutated_seatbelts$DeathsQuartile)
+table(mutated_seatbelts$AboveMeanDeaths)
+```
+
+### Manipulate my data *(syntax demo)*
+```{r}
+# here we are creating new variables so this doesn't show up as code output
+
+# create new variables using mutate()
+new_seatbelts <- seatbelts_monthly %>% mutate(kms * 2)
+new_seatbelts <- seatbelts_monthly %>% mutate(lag_deaths = lag(DriversKilled, n = 1)) # you can name the variable you create
+# replace a variable
+new_seatbelts$lag_deaths <- new_seatbelts %>% mutate(lag(DriversKilled, n = 2))
+
+# creating new empty variables
+# this comes in handy when you want to initiate loops
+# create a new empty character variable
+new_seatbelts <- seatbelts_monthly %>% mutate("")
+# create a new empty numerical variable
+new_seatbelts <- seatbelts_monthly %>% mutate(.)
+
+# create a variable based on multiple conditions
+# in this case, on the value of another character vector
+# note that case_when() goes from most specific to most general
+new_seatbelts <- seatbelts_monthly %>% mutate(season = case_when(
+  month %in% c("December", "January", "February") ~ "Winter",
+  .default = "Not winter"
+))
+# for more complex character selection look into grep()
+
+# searching and replacing part of a string with another string
+new_seatbelts <- new_seatbelts %>% mutate(x = sub("Not winter", "Rest of year", season))
+# there is a whole universe out there on string selection (see also: regex, text encoding, etc) but we're not going there now
+
+# converting character vectors to something more useful, e.g. factors are for categorical data, i.e. a data structure that takes a set number of predefined values. you can modify them
+summary(seatbelts_monthly$month)
+new_seatbelts$month <- as.factor(new_seatbelts$month)
+summary(new_seatbelts$month)
+
+# selecting/dropping columns
+mini_seatbelts <- new_seatbelts %>% select(date, law)
+new_seatbelts <- new_seatbelts %>% select(-kms)
+```
+
+### Variance, Covariance, and Correlation
+As you know from your stats background, computing the variance, covariance and correlation between your variable of interest is computationally taxing (and you'd need to define other quantities of interest in the process, too, e.g. standard deviation). R can make our life easy!
+```{r}
+names(seatbelts_monthly)
+# these only work on numeric values
+
+# Calculate variance
+# Intuition: variance measures the dispersion of a single variable. It quantifies how much the values of a variable differ from the mean of the variable.
+variance <- var(seatbelts_monthly$DriversKilled)
+print(paste("Variance:", variance))
+# "High" compared to what? Variance alone doesn't say -- it's in SQUARED units (here,
+# deaths^2), which nobody has good intuition for. Two fixes:
+# (1) take the square root to get the standard deviation, back in the original units:
+sd_deaths <- sqrt(variance) # equivalently sd(seatbelts_monthly$DriversKilled)
+print(paste("SD:", sd_deaths))
+# (2) compare that SD to the mean, to get a sense of *relative* spread:
+mean_deaths <- mean(seatbelts_monthly$DriversKilled)
+print(paste("SD as a % of the mean:", round(100 * sd_deaths / mean_deaths, 1)))
+# SD ~= 25 deaths, against a mean of ~123/month -- so a typical month's death count is
+# about 25 deaths (~21%) above or below the average. THAT's what "high" means here: not
+# a number in isolation, but a spread relative to the thing being measured.
+
+# Calculate covariance
+# Intuition: covariance measures the joint variability of two variables. It indicates the direction of the linear relationship between the variables.
+covariance <- cov(seatbelts_monthly$kms, seatbelts_monthly$DriversKilled)
+print(paste("Covariance:", covariance))
+# A positive covariance indicates that the two variables tend to move in the same direction (when one increases, the other tends to increase).
+# A negative covariance indicates that the two variables tend to move in opposite directions (when one increases, the other tends to decrease).
+# Unlike variance, covariance's MAGNITUDE isn't meaningfully "high" or "low" at all -- it
+# depends on the arbitrary units of BOTH variables. Proof: if kms had been recorded in
+# miles instead of (probably) millions of km, the same underlying relationship would give
+# a completely different covariance number, just from rescaling:
+kms_miles <- seatbelts_monthly$kms * 0.621371
+print(paste("Same relationship, different units -> different covariance:", cov(kms_miles, seatbelts_monthly$DriversKilled)))
+# Only the SIGN of covariance is safe to read directly (negative here). For a magnitude
+# you can actually compare across variables/units, you need correlation -- which is
+# exactly why we compute it next.
+
+# Calculate correlation
+# Intuition: it quantifies the degree to which two variables are related. It measures both the strength and direction of the linear relationship between two variables.
+# The correlation coefficient, typically denoted as r, ranges from -1 to 1.
+correlation <- cor(seatbelts_monthly$kms, seatbelts_monthly$DriversKilled)
+print(paste("Correlation:", correlation))
+# 1: Perfect positive linear relationship.
+# -1: Perfect negative linear relationship.
+# 0: No linear relationship.
+# Notice the sign: it's NEGATIVE. Naively you might expect more driving (kms) to mean
+# more deaths (more exposure to risk) -- but at this monthly, aggregate level, "kms" is
+# also standing in for season (people drive more in fine-weather months, which are also
+# the safer months). We'll see this exact confound resurface, and get resolved, in the
+# regression task at the end of this session.
+```
+
+### Now we are moving to the realm of hypothesis testing...
+Same as above, R helps us with the otherwise computationally intense hypothesis testing
+```{r}
+# Comparing all 169 pre-law months against the 23 post-law months would mostly compare
+# two very different eras (see Session 1) -- so we restrict to a narrower, more
+# comparable window before testing anything.
+seatbelts_window <- subset(seatbelts_monthly, date >= as.Date("1980-01-01"))
+table(seatbelts_window$law)
+
+# One-tailed t-test
+# Intuition: used when you have a specific direction of interest (e.g., testing if the mean of one group is greater than the mean of another group).
+one_tailed_ttest <- t.test(DriversKilled ~ law, data = seatbelts_window, alternative = "greater")
+# Print the results
+print("One-tailed t-test results:")
+print(one_tailed_ttest)
+
+# Two-tailed t-test
+# Intuition: used when you are interested in any difference, regardless of direction (e.g., testing if the means of two groups are different).
+two_tailed_ttest <- t.test(DriversKilled ~ law, data = seatbelts_window, alternative = "two.sided")
+# Print the results
+print("Two-tailed t-test results:")
+print(two_tailed_ttest)
+
+# Paired t-test
+# Intuition: Used when you have two related samples (e.g., measurements taken before and after a treatment on the same subjects).
+# our data do not have repeated observations on the same unit (each month is a different
+# unit), so I will just show you the code:
+#paired_ttest <- t.test(DriversKilled ~ law, data = seatbelts_window, paired = TRUE)
+```
+
+### A design detour: does seasonality change the picture?
+
+The two-tailed test above compares 37 pre-law months against 23 post-law months, one month at a time. But we already saw (in "Summarise my data") that `DriversKilled` swings a lot by calendar month regardless of the law — so a month-by-month comparison is, in effect, also partly a comparison of *which months* happen to land on each side of the law change, not just of the law itself. One fix: aggregate to **yearly** means first, since averaging over 12 months cancels seasonality out.
+
+```{r}
+seatbelts_window$year <- as.numeric(format(seatbelts_window$date, "%Y"))
+
+# aggregate() is base R's group-by-and-summarise: DriversKilled by year, averaged
+yearly_deaths <- aggregate(DriversKilled ~ year, data = seatbelts_window, FUN = mean)
+yearly_deaths$law <- ifelse(yearly_deaths$year >= 1983, 1, 0) # law took effect in 1983
+print(yearly_deaths)
+
+t.test(DriversKilled ~ law, data = yearly_deaths)
+# Only 3 pre-law years vs 2 post-law years -- a t-test on 5 numbers has very little power,
+# and shouldn't be over-interpreted as a rigorous test on its own. Treat this as a sanity
+# check on DIRECTION and rough MAGNITUDE, not as a replacement for the monthly test above.
+```
+
+### Task: run your own t-test
+
+`seatbelts_monthly` has `PetrolPrice` (the price of petrol; R's documentation doesn't give units, so read it as a relative measure, not as pounds per litre).
+
+1. Create a binary grouping variable: `"High"` if `PetrolPrice` is above its median, `"Low"` otherwise.
+2. Run a two-tailed t-test comparing `DriversKilled` between the High and Low groups.
+3. State your hypothesis in words *before* you look at the p-value, then interpret the result: is the difference statistically significant, and which group has fewer deaths?
+4. One thing to flag (you don't need to resolve it): petrol prices generally rose over 1969-1984, the same period deaths were generally falling for other reasons too. Does that change how much you trust this comparison?
+
+```{r, eval=FALSE}
+# your code here
+```
+
+### Simple Linear Regression
+```{r}
+mod1 <- lm(DriversKilled ~ kms, data = seatbelts_window)
+summary(mod1)
+names(seatbelts_window)
+# what shall we control for?
+# we saw kms and DriversKilled were negatively correlated above, seemingly backwards --
+# is that because kms is confounded with law, or with season (month), or both?
+mod2 <- lm(DriversKilled ~ kms + law + PetrolPrice, data = seatbelts_window)
+summary(mod2)
+mod3 <- lm(DriversKilled ~ kms + law + PetrolPrice + month, data = seatbelts_window)
+summary(mod3)
+# let's spend some time interpreting these models
+```
+
+### Side-by-side regression tables with stargazer
+
+Reading three `summary()` outputs one after another is slow. `stargazer` puts several models in one table, the way they appear in papers.
+```{r}
+# Install once -- this line only installs stargazer if it's missing, so it's safe to leave in.
+if (!requireNamespace("stargazer", quietly = TRUE)) install.packages("stargazer")
+library(stargazer)
+
+stargazer(mod1, mod2, mod3,
+          type = "text",                        # plain text in the console; "html" or "latex" for reports
+          header = FALSE,
+          dep.var.labels = "Drivers killed (monthly)",
+          covariate.labels = c("Distance driven (kms)", "Seatbelt law", "Petrol price"),
+          omit = "month",                       # don't print the 11 month dummies...
+          add.lines = list(c("Month dummies", "No", "No", "Yes")),  # ...but say they are there
+          omit.stat = c("f", "ser"))            # drop two wide rows so the table fits on a page
+# How to read it: each column is one model. The numbers are coefficients, the number in
+# parentheses is the standard error, and the stars mark conventional significance levels
+# (see the note under the table). Read left to right and watch what happens to `kms` and
+# `Seatbelt law` as controls are added.
+# For a nicely formatted table when you knit: change type to "html" and add results = 'asis'
+# to this chunk's header.
+```
+
+### Task: from bivariate to multivariate, one step at a time
+
+Rather than jumping straight to `mod2`'s predictor list, build the bridge yourself:
+
+1. Fit `mod_a <- lm(DriversKilled ~ kms + law, data = seatbelts_window)` — one covariate added to `mod1`. How does the coefficient on `kms` change compared to `mod1`? Does its *sign* change?
+2. Fit `mod_b <- lm(DriversKilled ~ kms + law + month, data = seatbelts_window)` — controlling for calendar month directly, instead of aggregating to yearly like we did earlier. Has `kms`'s coefficient kept moving?
+3. Compare R² across `mod1`, `mod_a`, `mod_b`. What's happening to model fit as you add predictors — and which addition matters most?
+4. In a sentence: what does it mean that `kms`'s coefficient flips sign once `month` is in the model? What was the raw correlation actually picking up?
+5. Put `mod1`, `mod_a` and `mod_b` side by side in one `stargazer` table (use the chunk above as a template). Does the table tell the same story you just told in words?
+
+```{r, eval=FALSE}
+# your code here
+```
+
+In the next session we are going to learn how to visually represent our data. See you then!

@@ -1,0 +1,290 @@
+---
+title: "Session4"
+output: html_document
+date: "2026-09-08"
+---
+
+TOPIC: Count Models, Logistic Regressions, Ordered Logistic Regressions, *[Break]*, Decision Trees, Random Trees, Random Forests, Regression Trees, Classification Trees, Regression Trees For Classification,
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Count Models
+
+INTUITION: Coefficients: the coefficients (β) in a Poisson regression model represent the log change in the expected count of the response variable for a one-unit increase in the predictor variable, holding all other variables constant.
+Intercept: The exponentiated intercept represents the expected count when all predictor variables are zero.
+```{r}
+# Install and load required packages
+install.packages("ggplot2")
+install.packages("broom")
+install.packages("MASS")
+library(ggplot2)
+library(broom)
+library(MASS)
+
+# Load the data saved in Session 1 -- or, if the file can't be found (wrong working
+# directory? Session 1 not finished?), rebuild the same data frame from the built-in Seatbelts data.
+if (file.exists("../data/seatbelts_monthly.csv")) {
+  seatbelts_monthly <- read.csv("../data/seatbelts_monthly.csv")
+  seatbelts_monthly$date <- as.Date(seatbelts_monthly$date)
+} else {
+  seatbelts_monthly <- as.data.frame(Seatbelts)
+  seatbelts_monthly$date <- seq(as.Date("1969-01-01"), by = "month", length.out = nrow(seatbelts_monthly))
+  seatbelts_monthly$month <- months(seatbelts_monthly$date)
+}
+seatbelts_monthly$month <- factor(seatbelts_monthly$month, levels = month.name)
+seatbelts_window <- subset(seatbelts_monthly, date >= as.Date("1980-01-01")) # same window as Session 2
+
+# Fit a GLM model: Poisson regression for count data
+# VanKilled is a genuine count -- always a non-negative whole number -- which makes it a
+# clean fit for Poisson
+poisson_model <- glm(VanKilled ~ kms + law, family = poisson, data = seatbelts_window)
+summary(poisson_model)
+
+# how do you interpret the output of this model?
+```
+
+### Logistic Regressions
+
+INTUITION: Logistic regression is used when the response (dependent) variable is binary or categorical with two possible outcomes (we use ordered logistic regressions when we have more categories).
+```{r}
+# Create a binary response variable
+# We will create a binary variable high_deaths which is 1 if DriversKilled is above the median value and 0 otherwise.
+seatbelts_window$high_deaths <- ifelse(seatbelts_window$DriversKilled > median(seatbelts_window$DriversKilled), 1, 0)
+
+# Fit a logistic regression model
+# We will use kms (distance driven) and law as predictor variables.
+logistic_model <- glm(high_deaths ~ kms + law, family = binomial, data = seatbelts_window)
+summary(logistic_model)
+
+# Interpretation:
+# Intercept: The log-odds of a month being an above-median-deaths month when kms and law are zero.
+# Coefficients: The change in log-odds for a one-unit increase in the predictor variable.
+```
+
+### Ordered Logits
+
+INTUITION: Ordered logistic regression (also known as ordinal logistic regression) is used when the dependent variable is ordinal, meaning it has ordered categories.
+```{r}
+install.packages("ordinal")
+library(ordinal)
+
+# Create an ordinal response variable based on DriversKilled
+# We'll categorize it into three ordinal categories: low, medium, and high (roughly equal-sized groups).
+seatbelts_window$deaths_cat <- cut(seatbelts_window$DriversKilled,
+                       breaks = quantile(seatbelts_window$DriversKilled, probs = c(0, 1/3, 2/3, 1)),
+                       include.lowest = TRUE,
+                       labels = c("Low", "Medium", "High"),
+                       ordered_result = TRUE)
+
+# Fit an ordered logistic regression model
+# We'll use kms (rescaled to 1000s -- clm() can fail to print/converge cleanly when
+# predictors are on very different scales) and law as predictor variables.
+seatbelts_window$kms_k <- seatbelts_window$kms / 1000
+ord_logit_model <- clm(deaths_cat ~ kms_k + law, data = seatbelts_window)
+summary(ord_logit_model)
+# Coefficients: Interpret the direction and significance of the predictors.
+# Thresholds: These are the points on the latent variable that separate the categories.
+```
+
+### Task: extend the ordered logit model
+
+`ord_logit_model` predicts `deaths_cat` (Low/Medium/High drivers killed) from `kms_k` (distance driven, 1000s) and `law`. `seatbelts_window` also has `PetrolPrice`.
+
+1. Fit a new model called `ord_logit_model2` that adds `PetrolPrice` as a third predictor, using `clm()` just like above.
+2. Run `summary(ord_logit_model2)`. Find the row for `PetrolPrice`: is its coefficient positive or negative? Is it statistically significant (check the p-value column, `Pr(>|z|)`)?
+3. In one sentence: does `law`'s coefficient (and significance) survive adding `PetrolPrice` to the model?
+
+```{r, eval=FALSE}
+# your code here
+ord_logit_model2 <- clm(___ ~ ___ + ___ + ___, data = seatbelts_window)
+summary(ord_logit_model2)
+```
+
+### Task: full mini-analysis — a preamble to the policy impact
+
+Every session this week has circled back to one real question: did the 1983 seatbelt law reduce road deaths? This task is your chance to run a complete analysis of *your own* question about this data — from a theory, through a test, to an honest interpretation. It is a first look, not a rigorous causal evaluation.
+
+**Ground rules — this is an exploratory project.** You have observational monthly data and `lm()`. That is enough to describe patterns and to check whether they hold up, but not to prove that anything *caused* anything. So:
+
+- Write "is associated with", not "reduces" or "causes", unless you can argue the alternatives away.
+- For every result, name **at least two alternative explanations** (think: season, the long-run downward trend in deaths, other things that changed at the same time as the law, the arrow running the other way).
+- Consecutive months are not independent of each other (this is a time series), so p-values here are optimistic. Treat them as rough guides, not verdicts.
+
+**Pick a starting question** (or invent your own from the variables in `seatbelts_monthly`):
+
+| # | Question | Outcome ~ predictor |
+|---|---|---|
+| 1 | Did the law reduce drivers killed? | `DriversKilled ~ law` |
+| 2 | Was the change concentrated among front-seat casualties rather than rear-seat ones? | `front ~ law`, compared with `rear ~ law` |
+| 3 | Do higher petrol prices reduce how much people drive? | `kms ~ PetrolPrice` |
+| 4 | Does more driving mean more deaths? | `DriversKilled ~ kms` |
+| 5 | Did the death *rate per distance driven* fall after the law? | `rate ~ law` (`rate` is built for you below) |
+| 6 | Which months are deadliest, and by how much? | `DriversKilled ~ month` |
+| 7 | Were deaths already falling *before* the law? | `DriversKilled ~ time`, using only `subset(seatbelts_monthly, law == 0)` |
+| 8 | Did van-driver deaths move around the law too? (Look up who the law covered before you interpret the answer.) | `VanKilled ~ law` |
+| 9 | Your own question | |
+
+**Steps**
+
+1. **Theory.** In 2-3 sentences, say *why* you expect a relationship. Give a mechanism, not just a guess.
+2. **Hypothesis.** One specific, testable statement (H1: ...). Say which variable is the outcome and which is the predictor.
+3. **Feasibility check.** Explore the variables (`str()`, `summary()`, a quick plot). Right type? Enough variation? Revise your hypothesis now if it isn't testable as stated.
+4. **Descriptive statistics.** Describe your variables before testing anything.
+5. **Test.** Fit your model with `lm()`.
+6. **Robustness check** (the one habit to take away from this task): refit your model adding `month`, then adding `month` **and** `time`. Does your coefficient keep its sign and rough size? If it changes a lot or flips, your first result was fragile.
+7. **Interpret.** What does the result say? Does it support your theory? Which of your alternative explanations does the robustness check rule out, and which does it leave open?
+
+```{r}
+# --- Setup for this task. It runs on its own, so you can start here without running earlier chunks ---
+if (file.exists("../data/seatbelts_monthly.csv")) {
+  seatbelts_monthly <- read.csv("../data/seatbelts_monthly.csv")
+  seatbelts_monthly$date <- as.Date(seatbelts_monthly$date)
+} else {
+  seatbelts_monthly <- as.data.frame(Seatbelts)
+  seatbelts_monthly$date <- seq(as.Date("1969-01-01"), by = "month", length.out = nrow(seatbelts_monthly))
+  seatbelts_monthly$month <- months(seatbelts_monthly$date)
+}
+seatbelts_monthly$month <- factor(seatbelts_monthly$month, levels = month.name)
+
+# Three new variables you can use:
+seatbelts_monthly$year <- as.numeric(format(seatbelts_monthly$date, "%Y"))
+seatbelts_monthly$time <- 1:nrow(seatbelts_monthly)   # month counter: 1 = Jan 1969, ..., 192 = Dec 1984
+seatbelts_monthly$rate <- seatbelts_monthly$DriversKilled / seatbelts_monthly$kms * 1000  # deaths per 1,000 distance units
+
+# The same 1980-onward window we used in Session 2:
+seatbelts_window <- subset(seatbelts_monthly, date >= as.Date("1980-01-01"))
+
+if (!requireNamespace("stargazer", quietly = TRUE)) install.packages("stargazer")
+library(stargazer)
+```
+
+```{r, eval=FALSE}
+# Tools you can use (edit the variable names for your own question):
+m1 <- lm(DriversKilled ~ law, data = seatbelts_monthly)                  # a simple model
+m2 <- lm(DriversKilled ~ law + month, data = seatbelts_monthly)          # controlling for season
+m3 <- lm(DriversKilled ~ law + month + time, data = seatbelts_monthly)   # ...and for the long-run trend
+summary(m3)
+stargazer(m1, m2, m3, type = "text", header = FALSE, omit = "month", omit.stat = c("f", "ser"),
+          add.lines = list(c("Month dummies", "No", "Yes", "Yes")))     # the three models side by side
+plot(seatbelts_monthly$kms, seatbelts_monthly$DriversKilled)             # a quick scatter plot...
+abline(lm(DriversKilled ~ kms, data = seatbelts_monthly))                # ...with a fitted line
+# Use the full series (seatbelts_monthly) or the 1980-onward window (seatbelts_window): try both,
+# and say which you prefer and why.
+```
+
+```{r, eval=FALSE}
+# 1. Theory (write as a comment)
+
+
+# 2. Hypothesis (write as a comment)
+
+
+# 3. Feasibility check
+str(seatbelts_monthly)
+
+
+# 4. Descriptive statistics
+
+
+# 5. Test
+
+
+# 6. Robustness: refit with + month, then + month + time
+
+
+# 7. Interpretation (write as a comment)
+```
+
+## Machine Learning: intuition, not just code
+
+We may not get through all the code below in class — that's fine. What matters is that you leave with a sense of **when** you'd reach for these tools, **what** they actually do, and **how** they fit alongside everything else you've learned this week, rather than a step-by-step of the R syntax.
+
+Machine learning is a subset of AI that builds systems which learn patterns from data rather than being told the rule in advance (*less weight on theory, more weight on the data itself*). Everything you've done so far in this bootcamp starts from a theory: you specify a model (`lm`, `glm`, `clm`...) because you have a hypothesis about *which* variables matter and *how*. Trees and forests flip that around: you hand them the data and let the algorithm find the splits, interactions, and nonlinearities for you. That's powerful when you don't know the functional form in advance, or when there are too many possible interactions to specify by hand — but it also means you're trading interpretability for flexibility.
+
+**A concrete example, closer to home than iris flowers:**
+
+Say you ran an experiment testing whether an AI chatbot's persuasive messaging shifts people's opinions — exposing people to different AI-generated messages and measuring opinion change (this is, literally, the kind of RCT used to study AI persuasion). A **classification or regression tree** could take respondent features (prior attitude strength, political leaning, education) and message features (tone, length, which model generated it) and show you, in one picture, which *combinations* predict the biggest shift — no need to guess the interactions ahead of time. A **random forest** averages hundreds of such trees for a more reliable prediction, and its "variable importance" score tells you which levers matter most overall.
+
+This is exactly the machinery behind **causal forests** (Athey & Wager's generalized random forests): the same tree-splitting idea, but built specifically to estimate *who* a treatment affects most — heterogeneous treatment effects, the same concept behind the HTE work you've seen elsewhere in this course, just estimated with trees instead of a handful of pre-specified subgroups. This is increasingly how AI systems and AI policy interventions get evaluated in practice: not just "did the intervention work on average," but "for whom did it work, and why."
+
+**The trade-off to hold onto:** ML is a *prediction* and *pattern-discovery* tool. It doesn't replace the theory-and-design work from the rest of this bootcamp — you still need something like a randomized experiment (or, for observational data like this week's seatbelts data, a genuinely careful design) to trust that a pattern reflects a real effect rather than a coincidence in the training data. Think of it as a complement: theory tells you where to look; trees and forests are good at telling you what you'd have missed by only looking where theory told you to.
+
+### Classification Trees
+ INTUITION: use in predicting categorical outcomes. For example, we will see how the tree splits based on kms and law to classify whether a month is a "High" or "Low" deaths month.
+```{r}
+install.packages("rpart")
+install.packages("rpart.plot")
+library(rpart)
+library(rpart.plot)
+
+# Create a binary response variable based on DriversKilled
+seatbelts_window$high_deaths_lbl <- ifelse(seatbelts_window$DriversKilled > median(seatbelts_window$DriversKilled), "High", "Low")
+
+# Fit a classification tree
+class_tree <- rpart(high_deaths_lbl ~ kms + law, data = seatbelts_window, method = "class")
+rpart.plot(class_tree)
+```
+
+### Regression Tree
+
+INTUITION:  use to predict continuous outcomes. For example, the tree splits based on kms and law to predict the actual number of drivers killed.
+
+```{r}
+# Fit a regression tree
+reg_tree <- rpart(DriversKilled ~ kms + law, data = seatbelts_window, method = "anova")
+rpart.plot(reg_tree)
+```
+
+Decision Trees Vs Random Forest:
+
+*Decision Trees:*
+1) Single Model: A decision tree is a single model that splits the data based on feature values to make predictions.
+2) Overfitting: Decision trees are prone to overfitting, especially if they are deep with many branches. Overfitting means the model performs well on training data but poorly on new, unseen data.
+
+*Random Forests:*
+1) Ensemble Method: A random forest is an ensemble of multiple decision trees. It builds several decision trees and combines their predictions to improve accuracy and robustness.
+2) Bootstrapping and Aggregation: Random forests use bootstrapping (random sampling with replacement) to create multiple subsets of the data. Each tree is trained on a different subset. The final prediction is made by averaging the predictions (regression) or taking a majority vote (classification) from all the trees.
+3) Reduced Overfitting: By averaging multiple trees, random forests reduce the risk of overfitting and generally provide better generalization performance.
+
+### Random Forest *(syntax demo — uses `iris`, not the seatbelts data)*
+```{r}
+# Install and load necessary libraries
+install.packages("randomForest")
+library(randomForest)
+
+# Load the iris dataset -- a different, unrelated dataset here on purpose: random forests
+# are easiest to demonstrate on a case with a clear multi-class outcome and no time
+# structure to worry about, which iris gives us for free
+data(iris)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Split the data into training and test sets (70% training, 30% test)
+sample_index <- sample(1:nrow(iris), 0.7 * nrow(iris)) #sample(n, size...)
+train_data <- iris[sample_index, ]
+test_data <- iris[-sample_index, ]
+
+# Fit the random forest model
+rf_model <- randomForest(Species ~ ., data = train_data, ntree = 100, mtry = 2, importance = TRUE)
+#The ntree parameter specifies the number of trees, and mtry specifies the number of variables randomly sampled as candidates at each split.
+
+# Print the model summary
+print(rf_model)
+
+# Predict on the test set
+predictions <- predict(rf_model, newdata = test_data)
+
+# Confusion matrix
+conf_matrix <- table(test_data$Species, predictions)
+print(conf_matrix)
+
+# Accuracy
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+print(paste("Accuracy:", round(accuracy, 2)))
+
+# Variable importance plot
+varImpPlot(rf_model) #varImpPlot: importance of each variable
+```
